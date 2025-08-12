@@ -1,0 +1,73 @@
+% Compilar en LuaLaTeX
+\documentclass{standalone}
+\usepackage{luacode}   % Para ejecutar Lua
+\usepackage{tikz}      % Para dibujar
+
+\begin{document}
+
+% ----------------------------------------------------------------
+% BLOQUE LUACODE: cálculo y dibujo del fractal de Lyapunov
+% ----------------------------------------------------------------
+\begin{luacode*}
+-- Parámetros de la imagen (ajústalos si quieres)
+local W, H        = 200, 200   -- anchura y altura en "píxeles"
+local a_min, a_max = 2.5, 4.0   -- rango para parámetro A
+local b_min, b_max = 2.5, 4.0   -- rango para parámetro B
+local warmup      = 100        -- iteraciones de "calentamiento"
+local iters       = 400        -- iteraciones para promedio
+local sequence_str = "AB"      -- secuencia de mapas (p. ej. "AABABB")
+-- Construimos tabla con la secuencia
+local sequence = {}
+for c in sequence_str:gmatch(".") do sequence[#sequence+1] = c end
+local S = #sequence
+
+-- Función que calcula el exponente de Lyapunov para un par (A,B)
+local function lyapunov_exponent(A, B)
+  local x = 0.5
+  local sum = 0
+  for n = 1, warmup + iters do
+    -- elegimos r = A o B según la secuencia repetida
+    local r = (sequence[((n-1) % S) + 1] == "A") and A or B
+    x = r * x * (1 - x)
+    if n > warmup then
+      sum = sum + math.log(math.abs(r * (1 - 2*x)))
+    end
+  end
+  return sum / iters
+end
+
+-- Precomputamos todos los exponentes y normalizamos a [0,1]
+local Lmin, Lmax = 1e9, -1e9
+local Ltab = {}
+for j = 1, H do
+  local row = {}
+  local B = b_min + (j-1)/(H-1)*(b_max - b_min)
+  for i = 1, W do
+    local A = a_min + (i-1)/(W-1)*(a_max - a_min)
+    local L = lyapunov_exponent(A, B)
+    row[i] = L
+    if L < Lmin then Lmin = L end
+    if L > Lmax then Lmax = L end
+  end
+  Ltab[j] = row
+end
+
+-- Dibujamos con TikZ: cada "píxel" es un pequeño rectángulo
+tex.sprint("\\begin{tikzpicture}[xscale=0.02,yscale=0.02,line width=0pt]")
+for j = 1, H do
+  for i = 1, W do
+    local L = Ltab[j][i]
+    -- normaliza L a [0,1]
+    local v = (L - Lmin) / (Lmax - Lmin)
+    -- convertimos a porcentaje para mezclar rojo (v%) y azul (100-v%)
+    local pct = math.floor(v * 100 + 0.5)
+    tex.sprint(string.format(
+      "\\fill[red!%d!blue] (%d,%d) rectangle ++(1,1);",
+      pct, i-1, j-1
+    ))
+  end
+end
+tex.sprint("\\end{tikzpicture}")
+\end{luacode*}
+
+\end{document}
